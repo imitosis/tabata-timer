@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Tabata Timer</title>
+<style>
+  :root {
+    --prep: #f5a623;
+    --work: #e53935;
+    --rest: #2e9d57;
+    --setrest: #1e6fd9;
+    --done: #7b4bd1;
+    --bg: #111418;
+    --panel: #1b2027;
+    --text: #f4f6f8;
+    --muted: #9aa4b1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    transition: background-color .35s ease;
+    overflow: hidden;
+    user-select: none;
+  }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+  .hidden { display: none !important; }
+
+  /* ---------- Einstellungen ---------- */
+  #setup { align-items: center; overflow-y: auto; }
+  #setup h1 { font-size: 2rem; letter-spacing: .04em; margin: 12px 0 4px; }
+  #setup .sub { color: var(--muted); margin-bottom: 20px; }
+  .settings { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel); border-radius: 14px; padding: 12px 14px; border-left: 6px solid var(--c, #555); }
+  .row label { font-size: 1.05rem; }
+  .row small { display: block; color: var(--muted); font-size: .8rem; }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper button { width: 42px; height: 42px; border-radius: 50%; border: none;
+    background: #2b323c; color: var(--text); font-size: 1.4rem; cursor: pointer; }
+  .stepper button:active { background: #3a4350; }
+  .stepper output { min-width: 64px; text-align: center; font-size: 1.3rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .total { margin: 18px 0 10px; color: var(--muted); }
+  .total b { color: var(--text); }
+  .big-btn { width: 100%; max-width: 440px; padding: 18px; border-radius: 16px; border: none;
+    font-size: 1.3rem; font-weight: 700; letter-spacing: .05em; cursor: pointer;
+    background: var(--work); color: #fff; }
+  .big-btn:active { filter: brightness(.9); }
+  .toggle { display: flex; align-items: center; gap: 10px; margin-top: 14px; color: var(--muted); }
+  .toggle input { width: 22px; height: 22px; accent-color: var(--rest); }
+
+  /* ---------- Timer ---------- */
+  #timer { justify-content: space-between; align-items: center; text-align: center; }
+  .top { width: 100%; display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 600; opacity: .9; }
+  .phase { font-size: clamp(2rem, 9vmin, 4.5rem); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .time { font-size: clamp(6rem, 42vmin, 22rem); font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .next { font-size: 1.1rem; opacity: .85; min-height: 1.4em; }
+  .bar { width: 100%; max-width: 700px; height: 10px; background: rgba(0,0,0,.25); border-radius: 5px; overflow: hidden; }
+  .bar div { height: 100%; width: 0; background: rgba(255,255,255,.9); }
+  .controls { display: flex; gap: 14px; justify-content: center; width: 100%; }
+  .controls button { flex: 1; max-width: 160px; padding: 16px 10px; border-radius: 14px; border: none;
+    font-size: 1.1rem; font-weight: 700; cursor: pointer; background: rgba(0,0,0,.28); color: #fff; }
+  .controls button.primary { background: rgba(255,255,255,.92); color: #111; }
+  .controls button:active { filter: brightness(.85); }
+  .center { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+  .paused-hint { font-size: 1rem; opacity: .9; min-height: 1.2em; }
+
+  body.prep    { background: var(--prep); }
+  body.work    { background: var(--work); }
+  body.rest    { background: var(--rest); }
+  body.setrest { background: var(--setrest); }
+  body.done    { background: var(--done); }
+  body.prep .controls button.primary { color: var(--prep); }
+</style>
+</head>
+<body>
+
+<!-- Einstellungen -->
+<section id="setup" class="screen">
+  <h1>TABATA</h1>
+  <p class="sub">Intervall-Timer</p>
+  <div class="settings" id="settings"></div>
+  <p class="total">Gesamtdauer: <b id="totalTime">–</b></p>
+  <button class="big-btn" id="startBtn">START</button>
+  <label class="toggle"><input type="checkbox" id="soundToggle" checked> Ton an</label>
+</section>
+
+<!-- Timer -->
+<section id="timer" class="screen hidden">
+  <div class="top">
+    <span id="roundInfo"></span>
+    <span id="setInfo"></span>
+  </div>
+  <div class="center">
+    <div class="phase" id="phaseLabel"></div>
+    <div class="time" id="timeLabel">00</div>
+    <div class="next" id="nextLabel"></div>
+    <div class="paused-hint" id="pausedHint"></div>
+  </div>
+  <div class="center">
+    <div class="bar"><div id="progress"></div></div>
+    <div class="controls">
+      <button id="stopBtn">Stopp</button>
+      <button id="pauseBtn" class="primary">Pause</button>
+      <button id="skipBtn">Weiter ›</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(() => {
+  // ---------- Einstellungen ----------
+  const FIELDS = [
+    { key: 'prep',    label: 'Vorbereitung', hint: 'vor dem Start',            min: 0, max: 120, step: 5,  def: 10, unit: 's', color: 'var(--prep)' },
+    { key: 'work',    label: 'Belastung',    hint: 'Arbeitsphase',             min: 5, max: 600, step: 5,  def: 20, unit: 's', color: 'var(--work)' },
+    { key: 'rest',    label: 'Pause',        hint: 'zwischen den Runden',      min: 0, max: 600, step: 5,  def: 10, unit: 's', color: 'var(--rest)' },
+    { key: 'rounds',  label: 'Runden',       hint: 'pro Satz',                 min: 1, max: 50,  step: 1,  def: 8,  unit: '',  color: '#888' },
+    { key: 'sets',    label: 'Sätze',        hint: 'Anzahl Blöcke',            min: 1, max: 20,  step: 1,  def: 1,  unit: '',  color: '#888' },
+    { key: 'setRest', label: 'Satzpause',    hint: 'zwischen den Sätzen',      min: 0, max: 600, step: 15, def: 60, unit: 's', color: 'var(--setrest)' },
+  ];
+  const STORE = 'tabata-settings-v1';
+  let cfg = {};
+  FIELDS.forEach(f => cfg[f.key] = f.def);
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) {} };
+
+  const fmt = s => {
+    s = Math.max(0, Math.round(s));
+    const m = Math.floor(s / 60), r = s % 60;
+    return m ? `${m}:${String(r).padStart(2, '0')}` : `${r}`;
+  };
+  const fmtVal = (f, v) => f.unit === 's' ? (v >= 60 ? fmt(v) + ' min' : v + ' s') : String(v);
+
+  const settingsEl = document.getElementById('settings');
+  FIELDS.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.setProperty('--c', f.color);
+    row.innerHTML = `<label>${f.label}<small>${f.hint}</small></label>
+      <div class="stepper"><button data-d="-1" aria-label="weniger">−</button><output></output><button data-d="1" aria-label="mehr">+</button></div>`;
+    const out = row.querySelector('output');
+    const render = () => { out.textContent = fmtVal(f, cfg[f.key]); updateTotal(); };
+    let holdTimer;
+    row.querySelectorAll('button').forEach(b => {
+      const change = () => {
+        cfg[f.key] = Math.min(f.max, Math.max(f.min, cfg[f.key] + f.step * +b.dataset.d));
+        render(); save();
+      };
+      b.addEventListener('click', change);
+      // Gedrückt halten = schnell ändern
+      b.addEventListener('pointerdown', () => { holdTimer = setTimeout(function rep() { change(); holdTimer = setTimeout(rep, 80); }, 450); });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => clearTimeout(holdTimer)));
+    });
+    settingsEl.appendChild(row);
+    f.render = render;
+  });
+
+  // ---------- Ablauf ----------
+  function buildPlan() {
+    const plan = [];
+    if (cfg.prep > 0) plan.push({ type: 'prep', dur: cfg.prep, round: 0, set: 1 });
+    for (let s = 1; s <= cfg.sets; s++) {
+      for (let r = 1; r <= cfg.rounds; r++) {
+        plan.push({ type: 'work', dur: cfg.work, round: r, set: s });
+        const lastRound = r === cfg.rounds;
+        if (!lastRound && cfg.rest > 0) plan.push({ type: 'rest', dur: cfg.rest, round: r, set: s });
+        if (lastRound && s < cfg.sets && cfg.setRest > 0) plan.push({ type: 'setrest', dur: cfg.setRest, round: r, set: s });
+        if (lastRound && s < cfg.sets && cfg.setRest === 0 && cfg.rest > 0) plan.push({ type: 'rest', dur: cfg.rest, round: r, set: s });
+      }
+    }
+    return plan;
+  }
+  function updateTotal() {
+    if (!document.getElementById('totalTime')) return;
+    const t = buildPlan().reduce((a, p) => a + p.dur, 0);
+    document.getElementById('totalTime').textContent = fmt(t) + (t >= 60 ? ' min' : ' s');
+  }
+  FIELDS.forEach(f => f.render());
+
+  const LABEL = { prep: 'Bereit machen', work: 'Los!', rest: 'Pause', setrest: 'Satzpause', done: 'Geschafft!' };
+
+  // ---------- Sound (Web Audio, keine Dateien nötig) ----------
+  let ac = null;
+  const soundOn = document.getElementById('soundToggle');
+  try { soundOn.checked = localStorage.getItem('tabata-sound') !== '0'; } catch (e) {}
+  soundOn.addEventListener('change', () => { try { localStorage.setItem('tabata-sound', soundOn.checked ? '1' : '0'); } catch (e) {} });
+
+  function initAudio() {
+    if (!ac) { const C = window.AudioContext || window.webkitAudioContext; if (C) ac = new C(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+  }
+  function tone(freq, start, dur, type = 'sine', vol = 0.5) {
+    if (!ac || !soundOn.checked) return;
+    const t = ac.currentTime + start;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  const SOUND = {
+    tick:    () => tone(880, 0, 0.12, 'square', 0.25),                               // Countdown 3-2-1
+    work:    () => { tone(1046, 0, 0.18, 'square', 0.35); tone(1568, 0.18, 0.45, 'square', 0.35); }, // Start: hoch, aufsteigend
+    rest:    () => { tone(784, 0, 0.2, 'triangle', 0.5); tone(523, 0.2, 0.45, 'triangle', 0.5); },   // Pause: tief, absteigend
+    setrest: () => { [659, 523, 392].forEach((f, i) => tone(f, i * 0.2, 0.3, 'triangle', 0.5)); },
+    prep:    () => tone(660, 0, 0.25, 'sine', 0.4),
+    done:    () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, i * 0.16, 0.35, 'square', 0.3)); tone(1046, 0.7, 0.8, 'square', 0.3); },
+  };
+  const vibrate = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+  // ---------- Bildschirm wach halten ----------
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => wakeLock = null);
+      } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && running) keepAwake(true); });
+
+  // ---------- Timer-Logik ----------
+  const $ = id => document.getElementById(id);
+  let plan = [], idx = 0, endAt = 0, remaining = 0, running = false, paused = false, lastSec = null, loop = null;
+
+  function showScreen(name) {
+    $('setup').classList.toggle('hidden', name !== 'setup');
+    $('timer').classList.toggle('hidden', name !== 'timer');
+    if (name === 'setup') document.body.className = '';
+  }
+
+  function enter(i) {
+    idx = i;
+    if (idx >= plan.length) return finish();
+    const p = plan[idx];
+    remaining = p.dur;
+    endAt = performance.now() + p.dur * 1000;
+    lastSec = Math.ceil(p.dur);
+    document.body.className = p.type;
+    $('phaseLabel').textContent = LABEL[p.type];
+    $('roundInfo').textContent = p.round ? `Runde ${p.round} / ${cfg.rounds}` : `Runden: ${cfg.rounds}`;
+    $('setInfo').textContent = cfg.sets > 1 ? `Satz ${p.set} / ${cfg.sets}` : '';
+    const n = plan[idx + 1];
+    $('nextLabel').textContent = n ? `Danach: ${LABEL[n.type] === 'Los!' ? 'Belastung' : LABEL[n.type]} (${fmt(n.dur)} s)` : 'Danach: Ende';
+    SOUND[p.type] && SOUND[p.type]();
+    vibrate(p.type === 'work' ? [200, 80, 200] : 300);
+    render();
+  }
+
+  function render() {
+    const p = plan[idx]; if (!p) return;
+    $('timeLabel').textContent = fmt(Math.ceil(remaining - 0.001));
+    $('progress').style.width = (100 * (1 - remaining / p.dur)) + '%';
+  }
+
+  function tick() {
+    if (!running || paused) return;
+    remaining = Math.max(0, (endAt - performance.now()) / 1000);
+    const sec = Math.ceil(remaining);
+    if (sec !== lastSec) {
+      lastSec = sec;
+      if (sec >= 1 && sec <= 3 && plan[idx].dur > 3) SOUND.tick();
+    }
+    if (remaining <= 0) { enter(idx + 1); return; }
+    render();
+  }
+
+  function start() {
+    initAudio();
+    plan = buildPlan();
+    running = true; paused = false;
+    $('pauseBtn').textContent = 'Pause';
+    $('pausedHint').textContent = '';
+    showScreen('timer');
+    keepAwake(true);
+    clearInterval(loop);
+    loop = setInterval(tick, 50);
+    enter(0);
+  }
+
+  function togglePause() {
+    if (!running) return;
+    initAudio();
+    paused = !paused;
+    if (paused) {
+      remaining = Math.max(0, (endAt - performance.now()) / 1000);
+      $('pauseBtn').textContent = 'Weiter';
+      $('pausedHint').textContent = '⏸ Pausiert';
+    } else {
+      endAt = performance.now() + remaining * 1000;
+      $('pauseBtn').textContent = 'Pause';
+      $('pausedHint').textContent = '';
+    }
+  }
+
+  function finish() {
+    running = false;
+    clearInterval(loop);
+    document.body.className = 'done';
+    $('phaseLabel').textContent = LABEL.done;
+    $('timeLabel').textContent = '✓';
+    $('nextLabel').textContent = `${cfg.sets * cfg.rounds} Runden erledigt`;
+    $('roundInfo').textContent = ''; $('setInfo').textContent = '';
+    $('progress').style.width = '100%';
+    $('pauseBtn').textContent = 'Nochmal';
+    SOUND.done(); vibrate([300, 100, 300, 100, 600]);
+    keepAwake(false);
+  }
+
+  function stop() {
+    running = false; paused = false;
+    clearInterval(loop);
+    keepAwake(false);
+    showScreen('setup');
+  }
+
+  $('startBtn').addEventListener('click', start);
+  $('pauseBtn').addEventListener('click', () => running ? togglePause() : start());
+  $('stopBtn').addEventListener('click', stop);
+  $('skipBtn').addEventListener('click', () => { if (running) { initAudio(); paused = false; $('pauseBtn').textContent = 'Pause'; $('pausedHint').textContent = ''; enter(idx + 1); } });
+  // Leertaste = Pause, Esc = Stopp (für Laptop)
+  document.addEventListener('keydown', e => {
+    if ($('timer').classList.contains('hidden')) { if (e.code === 'Enter') start(); return; }
+    if (e.code === 'Space') { e.preventDefault(); running ? togglePause() : start(); }
+    if (e.code === 'Escape') stop();
+  });
+})();
+</script>
+</body>
+</html>
