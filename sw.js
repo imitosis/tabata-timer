@@ -1,6 +1,6 @@
 // Offline-Speicher für den Tabata Timer.
 // Bei Änderungen an den Dateien die Versionsnummer erhöhen.
-const CACHE = 'tabata-v7';
+const CACHE = 'tabata-v8';
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
