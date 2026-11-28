@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Wernercise">
-<link rel="manifest" href="manifest.webmanifest?v=8">
-<link rel="icon" type="image/png" href="icon-192.png?v=8">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=8">
+<link rel="manifest" href="manifest.webmanifest?v=9">
+<link rel="icon" type="image/png" href="icon-192.png?v=9">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=9">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Wernercise</title>
 <style>
@@ -68,7 +68,11 @@
 
   /* ---------- Timer ---------- */
   #timer { justify-content: space-between; align-items: center; text-align: center; }
-  .top { width: 100%; display: flex; justify-content: space-between; font-size: 1.1rem; font-weight: 600; opacity: .9; }
+  .top { width: 100%; display: flex; justify-content: space-around; gap: 12px; font-weight: 800; }
+  .top span { display: flex; flex-direction: column; align-items: center; }
+  .top span:empty { display: none; }
+  .top small { font-size: clamp(1rem, 4.5vw, 1.6rem); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
+  .top b { font-size: clamp(3rem, 17vw, 4.6rem); line-height: 1; font-variant-numeric: tabular-nums; }
   .phase { font-size: clamp(2rem, 9vmin, 4.5rem); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
   .time { font-size: clamp(6rem, 42vmin, 22rem); font-weight: 800; line-height: 1;
     font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
@@ -225,7 +229,7 @@
 
   // Uhr-Ticken: kurzer, harter Klick (Rauschen + heller Anschlag)
   let tickToggle = false;
-  function tick() {
+  function clockTick(sec = 1) {
     if (!ready()) return;
     const t = ac.currentTime, m = out();
     tickToggle = !tickToggle;
@@ -234,13 +238,14 @@
     const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = pitch; bp.Q.value = 4;
     const g = ac.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1.6, t + 0.002);
+    const v = 0.3 + (5 - Math.min(5, sec)) * 0.3;   // 5 s: leise … 1 s: am lautesten
+    g.gain.exponentialRampToValueAtTime(0.0001 + 1.6 * v, t + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
     n.connect(bp).connect(g).connect(m); n.start(t); n.stop(t + 0.08);
     const o = ac.createOscillator(), og = ac.createGain();
     o.type = 'triangle'; o.frequency.value = pitch / 2;
     og.gain.setValueAtTime(0.0001, t);
-    og.gain.exponentialRampToValueAtTime(0.7, t + 0.001);
+    og.gain.exponentialRampToValueAtTime(0.0001 + 0.7 * v, t + 0.001);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
     o.connect(og).connect(m); o.start(t); o.stop(t + 0.05);
   }
@@ -268,7 +273,7 @@
   }
 
   const SOUND = {
-    tick:    () => tick(),                                    // laut tickende Uhr bei 3-2-1
+    tick:    sec => clockTick(sec),                                // Uhr tickt die letzten 5 s, immer lauter
     work:    () => gong(220, 1),                              // Gong: Belastung beginnt
     rest:    () => gong(294, 0.8, 0, 2.4),                    // etwas hellerer Gong: Pause
     setrest: () => gong(196, 0.9, 0, 3.5),
@@ -308,8 +313,8 @@
     lastSec = Math.ceil(p.dur);
     document.body.className = p.type;
     $('phaseLabel').textContent = LABEL[p.type];
-    $('roundInfo').textContent = p.round ? `Runde ${p.round} / ${cfg.rounds}` : `Runden: ${cfg.rounds}`;
-    $('setInfo').textContent = cfg.sets > 1 ? `Satz ${p.set} / ${cfg.sets}` : '';
+    $('roundInfo').innerHTML = `<small>Runde</small><b>${p.round}/${cfg.rounds}</b>`;
+    $('setInfo').innerHTML = cfg.sets > 1 ? `<small>Satz</small><b>${p.set}/${cfg.sets}</b>` : '';
     const n = plan[idx + 1];
     $('nextLabel').textContent = n ? `Danach: ${LABEL[n.type] === 'Los!' ? 'Belastung' : LABEL[n.type]} (${fmt(n.dur)} s)` : 'Danach: Ende';
     SOUND[p.type] && SOUND[p.type]();
@@ -329,7 +334,7 @@
     const sec = Math.ceil(remaining);
     if (sec !== lastSec) {
       lastSec = sec;
-      if (sec >= 1 && sec <= 3 && plan[idx].dur > 3) SOUND.tick();
+      if (sec >= 1 && sec <= 5 && sec < plan[idx].dur) SOUND.tick(sec);
     }
     if (remaining <= 0) { enter(idx + 1); return; }
     render();
