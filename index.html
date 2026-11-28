@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Wernercise">
-<link rel="manifest" href="manifest.webmanifest?v=7">
-<link rel="icon" type="image/png" href="icon-192.png?v=7">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=7">
+<link rel="manifest" href="manifest.webmanifest?v=8">
+<link rel="icon" type="image/png" href="icon-192.png?v=8">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=8">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Wernercise</title>
 <style>
@@ -133,7 +133,7 @@
     { key: 'rest',    label: 'Pause',        hint: 'zwischen den Runden',      min: 0, max: 600, step: 5,  def: 10, unit: 's', color: 'var(--rest)' },
     { key: 'rounds',  label: 'Runden',       hint: 'pro Satz',                 min: 1, max: 50,  step: 1,  def: 8,  unit: '',  color: '#f72585' },
     { key: 'sets',    label: 'Sätze',        hint: 'Anzahl Blöcke',            min: 1, max: 20,  step: 1,  def: 1,  unit: '',  color: '#7209b7' },
-    { key: 'setRest', label: 'Satzpause',    hint: 'zwischen den Sätzen',      min: 0, max: 600, step: 15, def: 60, unit: 's', color: 'var(--setrest)' },
+    { key: 'setRest', label: 'Satzpause',    hint: 'zwischen den Sätzen',      min: 0, max: 600, step: 5,  def: 60, unit: 's', color: 'var(--setrest)' },
   ];
   const STORE = 'tabata-settings-v1';
   let cfg = {};
@@ -206,35 +206,74 @@
     if (!ac) { const C = window.AudioContext || window.webkitAudioContext; if (C) ac = new C(); }
     if (ac && ac.state === 'suspended') ac.resume();
   }
-  // Weicher Glockenklang: Grundton + leise Obertöne, sanftes Ausklingen
-  let master = null;
-  function bell(freq, start = 0, dur = 0.8, vol = 0.35) {
-    if (!ac || !soundOn.checked) return;
+  // Lautstärke-Kette: alles läuft über einen Kompressor, damit es laut, aber nicht übersteuert klingt
+  let master = null, noiseBuf = null;
+  function out() {
     if (!master) {
-      master = ac.createGain(); master.gain.value = 0.9;
-      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000;
-      master.connect(lp).connect(ac.destination);
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -18; comp.knee.value = 6; comp.ratio.value = 4;
+      comp.attack.value = 0.002; comp.release.value = 0.25;
+      master = ac.createGain(); master.gain.value = 1.6;
+      master.connect(comp).connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.1, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
-    const t = ac.currentTime + start;
-    [[1, 1], [2, 0.28], [3, 0.08], [4.2, 0.04]].forEach(([mult, amp], i) => {
-      const o = ac.createOscillator(), g = ac.createGain();
-      o.type = 'sine'; o.frequency.value = freq * mult;
-      const d = dur / (1 + i * 0.8);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol * amp, t + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-      o.connect(g).connect(master);
-      o.start(t); o.stop(t + d + 0.05);
-    });
+    return master;
   }
+  const ready = () => ac && soundOn.checked;
+
+  // Uhr-Ticken: kurzer, harter Klick (Rauschen + heller Anschlag)
+  let tickToggle = false;
+  function tick() {
+    if (!ready()) return;
+    const t = ac.currentTime, m = out();
+    tickToggle = !tickToggle;
+    const pitch = tickToggle ? 3200 : 2500;           // abwechselnd „Tick“ und „Tack“
+    const n = ac.createBufferSource(); n.buffer = noiseBuf;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = pitch; bp.Q.value = 4;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1.6, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    n.connect(bp).connect(g).connect(m); n.start(t); n.stop(t + 0.08);
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.type = 'triangle'; o.frequency.value = pitch / 2;
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.7, t + 0.001);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    o.connect(og).connect(m); o.start(t); o.stop(t + 0.05);
+  }
+
+  // Gong: tiefer Grundton mit unharmonischen Obertönen, langes Ausklingen
+  function gong(base = 220, vol = 1, start = 0, len = 3.2) {
+    if (!ready()) return;
+    const t = ac.currentTime + start, m = out();
+    [[1, 1, 1], [1.49, .6, .8], [2.0, .5, .7], [2.74, .35, .55], [3.6, .22, .4], [4.9, .12, .3]].forEach(([mult, amp, dec]) => {
+      [-2, 2].forEach(det => {                        // leicht verstimmt = schwebender Gong-Klang
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'sine'; o.frequency.value = base * mult; o.detune.value = det;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.42 * vol * amp, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len * dec);
+        o.connect(g).connect(m); o.start(t); o.stop(t + len * dec + 0.05);
+      });
+    });
+    // Anschlag
+    const n = ac.createBufferSource(); n.buffer = noiseBuf;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    const ng = ac.createGain();
+    ng.gain.setValueAtTime(0.5 * vol, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    n.connect(lp).connect(ng).connect(m); n.start(t); n.stop(t + 0.1);
+  }
+
   const SOUND = {
-    tick:    () => bell(987.8, 0, 0.35, 0.28),                                                  // sanftes „Pling“ bei 3-2-1
-    work:    () => { bell(1046.5, 0, 0.6, 0.3); bell(1318.5, 0.09, 0.6, 0.3); bell(1568, 0.18, 1.2, 0.34); }, // Los: hell, aufsteigend
-    rest:    () => { bell(784, 0, 0.7, 0.32); bell(587.3, 0.16, 1.1, 0.32); },                    // Pause: weich, absteigend
-    setrest: () => { bell(659.3, 0, 0.7, 0.3); bell(523.3, 0.18, 0.7, 0.3); bell(392, 0.36, 1.3, 0.32); },
-    prep:    () => bell(880, 0, 0.8, 0.28),
-    done:    () => { [523.3, 659.3, 784, 1046.5].forEach((f, i) => bell(f, i * 0.14, 0.9, 0.28));
-                     [523.3, 659.3, 784, 1046.5].forEach(f => bell(f, 0.7, 2.0, 0.2)); },
+    tick:    () => tick(),                                    // laut tickende Uhr bei 3-2-1
+    work:    () => gong(220, 1),                              // Gong: Belastung beginnt
+    rest:    () => gong(294, 0.8, 0, 2.4),                    // etwas hellerer Gong: Pause
+    setrest: () => gong(196, 0.9, 0, 3.5),
+    prep:    () => {},
+    done:    () => { gong(220, 1, 0, 3); gong(220, 1, 1.1, 4); },
   };
   const vibrate = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
 
