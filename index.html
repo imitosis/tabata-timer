@@ -233,7 +233,7 @@
   function clockTick(sec = 1) {
     if (!ready()) return;
     out();
-    if (!tickOut) { tickOut = ac.createGain(); tickOut.gain.value = 1; tickOut.connect(ac.destination); }
+    if (!tickOut) { tickOut = ac.createGain(); tickOut.gain.value = 0.42; tickOut.connect(ac.destination); }
     const t = ac.currentTime, m = tickOut;
     tickToggle = !tickToggle;
     const v = [1, .75, .45, .25, .12][Math.min(5, Math.max(1, sec)) - 1];   // 5 s: ganz leise … 1 s: laut (Crescendo)
