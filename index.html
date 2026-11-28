@@ -6,12 +6,12 @@
 <meta name="theme-color" content="#14072e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Wernercise">
+<meta name="apple-mobile-web-app-title" content="Rise &amp; Pump">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png?v=9">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=9">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Wernercise</title>
+<title>Rise &amp; Pump</title>
 <style>
   :root {
     --prep: #ffb703;
@@ -228,17 +228,19 @@
   const ready = () => ac && soundOn.checked;
 
   // Uhr-Ticken: kurzer, harter Klick (Rauschen + heller Anschlag)
-  let tickToggle = false;
+  let tickToggle = false, tickOut = null;
   function clockTick(sec = 1) {
     if (!ready()) return;
-    const t = ac.currentTime, m = out();
+    out();
+    if (!tickOut) { tickOut = ac.createGain(); tickOut.gain.value = 1; tickOut.connect(ac.destination); }
+    const t = ac.currentTime, m = tickOut;
     tickToggle = !tickToggle;
     const pitch = tickToggle ? 3200 : 2500;           // abwechselnd „Tick“ und „Tack“
     const n = ac.createBufferSource(); n.buffer = noiseBuf;
     const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = pitch; bp.Q.value = 4;
     const g = ac.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    const v = 0.3 + (5 - Math.min(5, sec)) * 0.3;   // 5 s: leise … 1 s: am lautesten
+    const v = [1, .75, .45, .25, .12][Math.min(5, Math.max(1, sec)) - 1];   // 5 s: ganz leise … 1 s: laut (Crescendo)
     g.gain.exponentialRampToValueAtTime(0.0001 + 1.6 * v, t + 0.002);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
     n.connect(bp).connect(g).connect(m); n.start(t); n.stop(t + 0.08);
@@ -250,35 +252,58 @@
     o.connect(og).connect(m); o.start(t); o.stop(t + 0.05);
   }
 
-  // Gong: tiefer Grundton mit unharmonischen Obertönen, langes Ausklingen
-  function gong(base = 220, vol = 1, start = 0, len = 3.2) {
+  // Gong: viele unharmonische Teiltöne, leichtes „Absacken“ der Tonhöhe, Schwebung und Hall
+  let reverb = null;
+  function hall() {
+    if (!reverb) {
+      reverb = ac.createConvolver();
+      const len = ac.sampleRate * 3, ir = ac.createBuffer(2, len, ac.sampleRate);
+      for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+      reverb.buffer = ir;
+      const rg = ac.createGain(); rg.gain.value = 0.35;
+      reverb.connect(rg).connect(out());
+    }
+    return reverb;
+  }
+  function gong(base = 180, vol = 1, start = 0, len = 4.5) {
     if (!ready()) return;
-    const t = ac.currentTime + start, m = out();
-    [[1, 1, 1], [1.49, .6, .8], [2.0, .5, .7], [2.74, .35, .55], [3.6, .22, .4], [4.9, .12, .3]].forEach(([mult, amp, dec]) => {
-      [-2, 2].forEach(det => {                        // leicht verstimmt = schwebender Gong-Klang
+    const t = ac.currentTime + start, m = out(), rv = hall();
+    const bus = ac.createGain(); bus.gain.value = vol;
+    bus.connect(m); bus.connect(rv);
+    const partials = [[1, 1, 1], [1.52, .7, .9], [2.07, .55, .75], [2.63, .45, .6], [3.25, .35, .5],
+                      [4.12, .25, .4], [5.3, .18, .3], [6.8, .1, .2]];
+    partials.forEach(([mult, amp, dec], i) => {
+      [-4, 3].forEach(det => {
         const o = ac.createOscillator(), g = ac.createGain();
-        o.type = 'sine'; o.frequency.value = base * mult; o.detune.value = det;
+        o.type = 'sine';
+        const f = base * mult;
+        o.frequency.setValueAtTime(f * 1.012, t);                       // Anschlag etwas höher …
+        o.frequency.exponentialRampToValueAtTime(f, t + 0.35);          // … dann „setzt“ sich der Ton
+        o.detune.value = det;
+        const peak = 0.22 * amp, d = len * dec;
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.42 * vol * amp, t + 0.012);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + len * dec);
-        o.connect(g).connect(m); o.start(t); o.stop(t + len * dec + 0.05);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.008 + i * 0.004);
+        g.gain.exponentialRampToValueAtTime(peak * 0.5, t + 0.25);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        o.connect(g).connect(bus); o.start(t); o.stop(t + d + 0.05);
       });
     });
-    // Anschlag
+    // Schlägel-Anschlag
     const n = ac.createBufferSource(); n.buffer = noiseBuf;
-    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200;
     const ng = ac.createGain();
-    ng.gain.setValueAtTime(0.5 * vol, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-    n.connect(lp).connect(ng).connect(m); n.start(t); n.stop(t + 0.1);
+    ng.gain.setValueAtTime(0.6, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    n.connect(lp).connect(ng).connect(bus); n.start(t); n.stop(t + 0.1);
   }
 
   const SOUND = {
     tick:    sec => clockTick(sec),                                // Uhr tickt die letzten 5 s, immer lauter
-    work:    () => gong(220, 1),                              // Gong: Belastung beginnt
-    rest:    () => gong(294, 0.8, 0, 2.4),                    // etwas hellerer Gong: Pause
-    setrest: () => gong(196, 0.9, 0, 3.5),
+    work:    () => gong(180, 1),                              // Gong: Belastung beginnt
+    rest:    () => gong(262, 0.75, 0, 3.2),                    // etwas hellerer Gong: Pause
+    setrest: () => gong(160, 0.9, 0, 5),
     prep:    () => {},
-    done:    () => { gong(220, 1, 0, 3); gong(220, 1, 1.1, 4); },
+    done:    () => { gong(180, 1, 0, 4); gong(180, 1, 1.4, 6); },
   };
   const vibrate = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
 

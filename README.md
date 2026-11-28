@@ -1,4 +1,4 @@
-# Wernercise 💪
+# Rise & Pump 💪
 
 Tabata Timer
 
