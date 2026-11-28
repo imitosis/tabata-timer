@@ -1,4 +1,6 @@
-# Tabata Timer
+# Wernercise 💪
+
+Tabata Timer
 
 Ein einfacher, klassischer Tabata-Timer im Browser – ohne Installation, ohne Anmeldung.
 
