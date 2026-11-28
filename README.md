@@ -1,4 +1,4 @@
-# Rise & Pump 💪
+# Tabatastic 💪
 
 Tabata Timer
 
